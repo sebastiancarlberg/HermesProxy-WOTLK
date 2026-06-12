@@ -148,6 +148,8 @@ public class GameSessionData
 
 	public Dictionary<WowGuid128, PlayerCache> CachedPlayers = new Dictionary<WowGuid128, PlayerCache>();
 
+	public Dictionary<byte, uint> SelfAuraBySlot = new Dictionary<byte, uint>();
+
 	public HashSet<WowGuid128> IgnoredPlayers = new HashSet<WowGuid128>();
 
 	public Dictionary<WowGuid128, uint> PlayerGuildIds = new Dictionary<WowGuid128, uint>();

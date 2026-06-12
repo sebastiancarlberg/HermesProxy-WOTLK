@@ -4026,9 +4026,38 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 		2366, 2368, 3570, 11993, 28695, 50300
 	};
 
+	private static readonly HashSet<uint> _druidShapeshiftSpells = new HashSet<uint>
+	{
+		5487, 9634, 768, 783, 1066, 24858, 33891, 33943, 40120
+	};
+
 	[PacketHandler(Opcode.CMSG_CAST_SPELL)]
 	private void HandleCastSpell(CastSpell cast)
 	{
+		if (_druidShapeshiftSpells.Contains(cast.Cast.SpellID) && this.GetSession().GameState.SelfAuraBySlot.ContainsValue(cast.Cast.SpellID))
+		{
+			WorldPacket cancelPacket = new WorldPacket(Opcode.CMSG_CANCEL_AURA);
+			cancelPacket.WriteUInt32(cast.Cast.SpellID);
+			this.SendPacketToServer(cancelPacket);
+
+			uint visual = GameData.GetSpellVisual(cast.Cast.SpellID);
+			CastFailed castFailed = new CastFailed();
+			castFailed.CastID = cast.Cast.CastID;
+			castFailed.SpellID = cast.Cast.SpellID;
+			castFailed.SpellXSpellVisualID = visual;
+			castFailed.Reason = (uint)SpellCastResultClassic.DontReport;
+			this.SendPacket(castFailed);
+
+			SpellFailure spellFailure = new SpellFailure();
+			spellFailure.CasterUnit = this.GetSession().GameState.CurrentPlayerGuid;
+			spellFailure.CastID = cast.Cast.CastID;
+			spellFailure.SpellID = cast.Cast.SpellID;
+			spellFailure.SpellXSpellVisualID = visual;
+			spellFailure.Reason = (ushort)SpellCastResultClassic.DontReport;
+			this.SendPacket(spellFailure);
+			return;
+		}
+
 		// Modern client sends gathering proficiency spells when clicking nodes.
 		// Translate to actual gathering spell. GO target will be injected from
 		// CurrentInteractedWithGO (set by previous CMSG_GAME_OBJ_REPORT_USE).

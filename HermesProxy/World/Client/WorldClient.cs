@@ -9350,11 +9350,15 @@ public class WorldClient
 			aura.AuraData = null;
 			update.Auras.Add(aura);
 			if (guid == this.GetSession().GameState.CurrentPlayerGuid)
-				Log.Print(LogType.Debug, $"[AuraUpdate] REMOVE slot={slot} for player", "ReadSingleAura", "");
+			{
+				this.GetSession().GameState.SelfAuraBySlot.Remove(slot);
+			}
 			return;
 		}
 		if (guid == this.GetSession().GameState.CurrentPlayerGuid)
-			Log.Print(LogType.Debug, $"[AuraUpdate] SET slot={slot} spellId={spellId} for player", "ReadSingleAura", "");
+		{
+			this.GetSession().GameState.SelfAuraBySlot[slot] = spellId;
+		}
 		AuraDataInfo data = new AuraDataInfo();
 		data.SpellID = spellId;
 		data.CastID = WowGuid128.Create(HighGuidType703.Cast, SpellCastSource.Aura, this.GetSession().GameState.CurrentMapId.Value, spellId, guid.GetCounter());
