@@ -2224,9 +2224,11 @@ public class WorldClient
 				blob.BlobIndex = (int)packet.ReadUInt32();
 				blob.ObjectiveIndex = packet.ReadInt32();
 				blob.MapID = (int)packet.ReadUInt32();
-				blob.UiMapID = (int)packet.ReadUInt32(); // areaId in legacy
+				packet.ReadUInt32(); // legacy areaId; not a modern UiMapID
 				blob.Priority = 0;
-				blob.Flags = (int)packet.ReadUInt32(); // floorId in legacy
+				packet.ReadUInt32(); // legacy floorId; not modern POI flags
+				blob.UiMapID = 0;
+				blob.Flags = 0;
 				blob.WorldEffectID = 0;
 				blob.PlayerConditionID = 0;
 				blob.NavigationPlayerConditionID = 0;
