@@ -3297,11 +3297,25 @@ public class WorldClient
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.CurrentHealth))
 		{
-			state.CurrentHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.CurrentHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.CurrentHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.MaxHealth))
 		{
-			state.MaxHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.MaxHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.MaxHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PowerType))
 		{
@@ -3341,7 +3355,14 @@ public class WorldClient
 				if ((auraMask & (ulong)(1L << (int)i)) != 0)
 				{
 					PartyMemberAuraStates aura = new PartyMemberAuraStates();
-					aura.SpellId = packet.ReadUInt16();
+					if (ModernVersion.ExpansionVersion == 3)
+					{
+						aura.SpellId = packet.ReadUInt32();
+					}
+					else
+					{
+						aura.SpellId = packet.ReadUInt16();
+					}
 					packet.ReadUInt8();
 					if (aura.SpellId != 0)
 					{
@@ -3382,7 +3403,14 @@ public class WorldClient
 			{
 				state.Pet = new PartyMemberPetStats();
 			}
-			state.Pet.Health = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.Pet.Health = packet.ReadUInt32();
+			}
+			else
+			{
+				state.Pet.Health = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PetMaxHealth))
 		{
@@ -3390,7 +3418,14 @@ public class WorldClient
 			{
 				state.Pet = new PartyMemberPetStats();
 			}
-			state.Pet.MaxHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.Pet.MaxHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.Pet.MaxHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PetPowerType))
 		{
@@ -3420,7 +3455,14 @@ public class WorldClient
 				if ((auraMask2 & (ulong)(1L << (int)i2)) != 0)
 				{
 					PartyMemberAuraStates aura2 = new PartyMemberAuraStates();
-					aura2.SpellId = packet.ReadUInt16();
+					if (ModernVersion.ExpansionVersion == 3)
+					{
+						aura2.SpellId = packet.ReadUInt32();
+					}
+					else
+					{
+						aura2.SpellId = packet.ReadUInt16();
+					}
 					packet.ReadUInt8();
 					if (aura2.SpellId != 0)
 					{
