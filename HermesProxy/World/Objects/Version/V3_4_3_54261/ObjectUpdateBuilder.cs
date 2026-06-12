@@ -2215,7 +2215,15 @@ public class ObjectUpdateBuilder
 			}
 		}
 		if (hasAnyResBuffGroup) SetBit(212);
-		for (int bi = 0; bi < 8; bi++)
+		// Per TC343 UnitData::WriteUpdate, bits 0/32/64/96 are pure gate/header bits, so
+		// forcing them on non-empty blocks 0-3 is correct and required. But bit 0 of
+		// blocks 4-7 are REAL data fields (128=PowerRegenInterruptedFlatModifier[1],
+		// 160=ModPowerRegen[3], 192=Resistances[1], 224=ResistanceBuffModsNegative[4]).
+		// Force-setting them without writing their values misaligned the field stream of
+		// every power/regen/resistance update (any unit in combat), and the 3.4.3 client
+		// disconnected with reason 7. Verified against a packet capture: a pet power update
+		// announced bits {96,116,128,140} but only wrote Power[3]'s 4 bytes.
+		for (int bi = 0; bi < 4; bi++)
 		{
 			if (blockMasks[bi] != 0)
 			{
