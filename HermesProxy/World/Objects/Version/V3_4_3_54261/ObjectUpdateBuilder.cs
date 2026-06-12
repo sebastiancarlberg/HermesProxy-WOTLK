@@ -1481,20 +1481,27 @@ public class ObjectUpdateBuilder
 			data.WriteUInt64(0uL);
 			data.WriteUInt8(0);
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		data.WriteUInt32(0u); // ArtifactPowers.size()
+		data.WriteUInt32(0u); // Gems.size()
 		if (this.IsOwner)
 		{
-			data.WriteUInt32(0u);
+			data.WriteUInt32(0u); // DynamicFlags2
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		// Per TC343 ItemData::WriteCreate the tail is:
+		//   ItemBonusKey { int32 ItemID; uint32 BonusListIDs.size(); }
+		//   [Owner] uint16 DEBUGItemLevel
+		//   Modifiers (ItemModList): WriteBits(count, 6) + FlushBits -> 1 byte when empty
+		// The previous code wrote an extra uint32 and a 4-byte int instead of the bit-packed
+		// modifier list, so the client rejected every owned-item create ("jam mirror full
+		// update failure"); bags could not link and accumulated corruption crashed the client.
+		data.WriteInt32(this.m_updateData.ObjectData?.EntryID ?? 0); // ItemBonusKey.ItemID
+		data.WriteUInt32(0u);                                        // ItemBonusKey.BonusListIDs count
 		if (this.IsOwner)
 		{
-			data.WriteUInt16(0);
+			data.WriteUInt16(0);                                     // DEBUGItemLevel
 		}
-		data.WriteInt32(0);
+		data.WriteBits(0, 6);                                        // Modifiers (empty)
+		data.FlushBits();
 	}
 
 	private void WriteEmptyItemCreate(WorldPacket data)
@@ -1535,20 +1542,21 @@ public class ObjectUpdateBuilder
 			data.WriteUInt64(0uL);
 			data.WriteUInt8(0);
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		data.WriteUInt32(0u); // ArtifactPowers.size()
+		data.WriteUInt32(0u); // Gems.size()
 		if (this.IsOwner)
 		{
-			data.WriteUInt32(0u);
+			data.WriteUInt32(0u); // DynamicFlags2
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		// TC343 item tail: ItemBonusKey + bit-packed empty Modifiers (see WriteCreateItemData).
+		data.WriteInt32(0);   // ItemBonusKey.ItemID
+		data.WriteUInt32(0u); // ItemBonusKey.BonusListIDs count
 		if (this.IsOwner)
 		{
-			data.WriteUInt16(0);
+			data.WriteUInt16(0); // DEBUGItemLevel
 		}
-		data.WriteInt32(0);
+		data.WriteBits(0, 6); // Modifiers (empty)
+		data.FlushBits();
 	}
 
 	private void WriteUpdateItemData(WorldPacket data)
