@@ -3185,6 +3185,17 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 		this.SendPacketToServer(legacyPacket);
 	}
 
+	[PacketHandler(Opcode.CMSG_QUERY_QUEST_COMPLETION_NPCS)]
+	private void HandleQueryQuestCompletionNPCs(QueryQuestCompletionNPCs query)
+	{
+		QuestCompletionNPCResponse response = new QuestCompletionNPCResponse();
+		foreach (int questId in query.QuestCompletionNPCs)
+		{
+			response.QuestIDs.Add(questId);
+		}
+		this.SendPacket(response);
+	}
+
 	[PacketHandler(Opcode.CMSG_ZONEUPDATE)]
 	private void HandleZoneUpdate(ZoneUpdatePkt packet)
 	{
