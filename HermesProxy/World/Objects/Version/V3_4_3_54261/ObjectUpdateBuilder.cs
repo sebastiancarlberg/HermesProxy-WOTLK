@@ -2906,7 +2906,8 @@ public class ObjectUpdateBuilder
 		data.WriteFloat(0f);
 		for (int l = 0; l < 240; l++)
 		{
-			data.WriteUInt64(0uL);
+			ulong exploredZone = ((active.ExploredZones != null) ? active.ExploredZones[l] : null).GetValueOrDefault();
+			data.WriteUInt64(exploredZone);
 		}
 		data.WriteUInt32(0u);
 		data.WriteUInt8(1);
