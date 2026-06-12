@@ -1402,6 +1402,19 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 		this.SendPacketToServer(packet);
 	}
 
+	[PacketHandler(Opcode.CMSG_REQUEST_PARTY_JOIN_UPDATES)]
+	private void HandleRequestPartyJoinUpdates(RequestPartyJoinUpdates request)
+	{
+		foreach (PartyUpdate group in this.GetSession().GameState.CurrentGroups)
+		{
+			if (group == null)
+				continue;
+
+			group.SequenceNum = this.GetSession().GameState.GroupUpdateCounter++;
+			this.SendPacket(group);
+		}
+	}
+
 	[PacketHandler(Opcode.CMSG_REQUEST_PARTY_MEMBER_STATS)]
 	private void HandleRequestPartyMemberStats(RequestPartyMemberStats request)
 	{
