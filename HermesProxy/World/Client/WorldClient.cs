@@ -4180,14 +4180,16 @@ public class WorldClient
 	private void HandleGuildPermissions(WorldPacket packet)
 	{
 		GuildPermissionsQueryResults results = new GuildPermissionsQueryResults();
-		results.GuildID = packet.ReadUInt32();
 		results.RankID = packet.ReadUInt32();
-		results.Flags = packet.ReadUInt32();
-		results.WithdrawGoldLimit = packet.ReadUInt32();
-		results.RemainingWithdrawGoldLimit = packet.ReadUInt32();
-		for (int i = 0; i < 6; i++)
+		results.Flags = packet.ReadInt32();
+		results.WithdrawGoldLimit = packet.ReadInt32();
+		results.NumTabs = packet.ReadUInt8();
+		for (int i = 0; i < 6 && packet.GetCurrentStream().Length - packet.GetCurrentStream().Position >= 8; i++)
 		{
-			results.TabPermissions[i] = packet.ReadUInt32();
+			GuildPermissionsQueryResults.GuildRankTabPermissions tab = new GuildPermissionsQueryResults.GuildRankTabPermissions();
+			tab.Flags = packet.ReadInt32();
+			tab.WithdrawItemLimit = packet.ReadInt32();
+			results.Tab.Add(tab);
 		}
 		this.SendPacketToClient(results);
 	}
