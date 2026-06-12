@@ -2313,7 +2313,12 @@ public class ObjectUpdateBuilder
 			{
 				data.WriteUInt8(unit.SexId.Value);
 			}
-			if (unit.DisplayPower.HasValue) data.WriteUInt32(unit.DisplayPower.Value);
+			// 3.4.3 UnitData.DisplayPower (bit 28) is uint8, not uint32 (see TC343
+			// UpdateFields.cpp UnitData::WriteCreate/WriteUpdate). Writing 4 bytes shifted
+			// every later field in the values stream by 3 bytes, so the client read
+			// ShapeshiftForm from the PetFlags offset (always 0) and the stance/bonus action
+			// bar never switched (it briefly flashed and rolled back).
+			if (unit.DisplayPower.HasValue) data.WriteUInt8((byte)unit.DisplayPower.Value);
 			if (unit.Level.HasValue)
 			{
 				data.WriteInt32(unit.Level.Value);
