@@ -29,6 +29,8 @@ namespace HermesProxy.World.Server;
 
 public class WorldSocket : SocketBase, BnetServices.INetwork
 {
+	private CastSpell _pendingGameObjectCast;
+
 	public struct ConnectToKey
 	{
 		public uint AccountId;
@@ -1241,6 +1243,14 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 		WorldPacket reportPacket = new WorldPacket(Opcode.CMSG_GAME_OBJ_REPORT_USE);
 		reportPacket.WriteGuid(guid64);
 		this.SendPacketToServer(reportPacket);
+		if (this._pendingGameObjectCast != null)
+		{
+			Log.Print(LogType.Debug, $"[GameObjectSpell] Replaying deferred spell {this._pendingGameObjectCast.Cast.SpellID} with GO target {use.Guid}.", "HandleGameObjReportUse", "WorldSocket.cs");
+			this._pendingGameObjectCast.Cast.Target.Unit = use.Guid;
+			this._pendingGameObjectCast.Cast.Target.Flags |= SpellCastTargetFlags.GameObject;
+			this.SendLegacyCastSpellToServer(this._pendingGameObjectCast);
+			this._pendingGameObjectCast = null;
+		}
 	}
 
 	[PacketHandler(Opcode.CMSG_PARTY_INVITE)]
@@ -4085,18 +4095,9 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 			}
 		}
 		// Modern client sends gathering proficiency spells targeting nodes.
-		// Don't translate — these spells have SPELL_EFFECT_OPEN_LOCK and work as-is.
-		// Just inject the GO target if not already set.
-		if (_miningProficiencySpells.Contains(cast.Cast.SpellID) ||
-			_herbalismProficiencySpells.Contains(cast.Cast.SpellID))
-		{
-			Log.Print(LogType.Debug, $"[CastSpell] Gathering spell {cast.Cast.SpellID} — injecting GO target", "HandleCastSpell", "");
-			if ((cast.Cast.Target.Unit == null || cast.Cast.Target.Unit.IsEmpty()) && this.GetSession().GameState.CurrentInteractedWithGO != null && !this.GetSession().GameState.CurrentInteractedWithGO.IsEmpty())
-			{
-				cast.Cast.Target.Unit = this.GetSession().GameState.CurrentInteractedWithGO;
-				cast.Cast.Target.Flags |= SpellCastTargetFlags.GameObject;
-			}
-		}
+		// Don't translate; these spells have SPELL_EFFECT_OPEN_LOCK and work as-is.
+		bool isGatheringSpell = _miningProficiencySpells.Contains(cast.Cast.SpellID) ||
+			_herbalismProficiencySpells.Contains(cast.Cast.SpellID);
 		if (Settings.ServerSpellDelay > 0)
 		{
 			Thread.Sleep(Settings.ServerSpellDelay);
@@ -4156,13 +4157,18 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 			}
 			this.GetSession().GameState.CurrentClientNormalCast = castRequest2;
 		}
-		// If casting Opening spell (6478) with no target, inject the game object
-		// from CMSG_GAME_OBJ_REPORT_USE — modern client sends the spell without a target
-		if (cast.Cast.SpellID == 6478 && (cast.Cast.Target.Unit == null || cast.Cast.Target.Unit.IsEmpty()) && this.GetSession().GameState.CurrentInteractedWithGO != null && !this.GetSession().GameState.CurrentInteractedWithGO.IsEmpty())
+		// Modern game-object spells can arrive before the object report that names the target.
+		if ((cast.Cast.SpellID == 6478 || isGatheringSpell) && (cast.Cast.Target.Unit == null || cast.Cast.Target.Unit.IsEmpty()))
 		{
-			cast.Cast.Target.Unit = this.GetSession().GameState.CurrentInteractedWithGO;
-			cast.Cast.Target.Flags |= SpellCastTargetFlags.GameObject;
+			Log.Print(LogType.Debug, $"[GameObjectSpell] Deferring spell {cast.Cast.SpellID} until GAME_OBJ_REPORT_USE provides the target.", "HandleCastSpell", "WorldSocket.cs");
+			this._pendingGameObjectCast = cast;
+			return;
 		}
+		this.SendLegacyCastSpellToServer(cast);
+	}
+
+	private void SendLegacyCastSpellToServer(CastSpell cast)
+	{
 		SpellCastTargetFlags targetFlags = this.ConvertSpellTargetFlags(cast.Cast.Target);
 		Log.Print(LogType.Debug, $"[CastSpell] SpellID={cast.Cast.SpellID} TargetFlags=0x{(uint)targetFlags:X} ModernFlags=0x{(uint)cast.Cast.Target.Flags:X} Unit={cast.Cast.Target.Unit} Item={cast.Cast.Target.Item}", "HandleCastSpell", "");
 		WorldPacket packet = new WorldPacket(Opcode.CMSG_CAST_SPELL);
