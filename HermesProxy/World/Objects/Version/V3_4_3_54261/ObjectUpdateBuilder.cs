@@ -1148,7 +1148,7 @@ public class ObjectUpdateBuilder
 		if (u.RaceId.HasValue || u.ClassId.HasValue || u.SexId.HasValue) return true;
 		if (u.Level.HasValue || u.EffectiveLevel.HasValue || u.DisplayPower.HasValue) return true;
 		if (u.FactionTemplate.HasValue || u.Flags.HasValue || u.Flags2.HasValue || u.Flags3.HasValue) return true;
-		if (u.AuraState.HasValue || u.OverrideDisplayPowerID.HasValue) return true;
+		if (u.AuraState.HasValue || u.OverrideDisplayPowerID.HasValue || u.RangedAttackRoundBaseTime.HasValue) return true;
 		if (u.BoundingRadius.HasValue || u.CombatReach.HasValue) return true;
 		if (u.DisplayScale.HasValue || u.NativeXDisplayScale.HasValue) return true;
 		if (u.NativeDisplayID.HasValue || u.MountDisplayID.HasValue) return true;
@@ -1971,6 +1971,7 @@ public class ObjectUpdateBuilder
 			SetBit(27);
 		}
 		if (unit.DisplayPower.HasValue) SetBit(28);
+		if (unit.OverrideDisplayPowerID.HasValue) SetBit(29);
 		if (unit.Level.HasValue)
 		{
 			SetBit(30);
@@ -1996,7 +1997,7 @@ public class ObjectUpdateBuilder
 		{
 			SetBit(44);
 		}
-		if (unit.OverrideDisplayPowerID.HasValue) SetBit(45);
+		if (unit.RangedAttackRoundBaseTime.HasValue) SetBit(45);
 		if (unit.BoundingRadius.HasValue)
 		{
 			SetBit(46);
@@ -2327,6 +2328,7 @@ public class ObjectUpdateBuilder
 			// ShapeshiftForm from the PetFlags offset (always 0) and the stance/bonus action
 			// bar never switched (it briefly flashed and rolled back).
 			if (unit.DisplayPower.HasValue) data.WriteUInt8((byte)unit.DisplayPower.Value);
+			if (unit.OverrideDisplayPowerID.HasValue) data.WriteUInt32(unit.OverrideDisplayPowerID.Value);
 			if (unit.Level.HasValue)
 			{
 				data.WriteInt32(unit.Level.Value);
@@ -2355,7 +2357,7 @@ public class ObjectUpdateBuilder
 			{
 				data.WriteUInt32(unit.AuraState.Value);
 			}
-			if (unit.OverrideDisplayPowerID.HasValue) data.WriteUInt32(unit.OverrideDisplayPowerID.Value);
+			if (unit.RangedAttackRoundBaseTime.HasValue) data.WriteUInt32(unit.RangedAttackRoundBaseTime.Value);
 			if (unit.BoundingRadius.HasValue)
 			{
 				data.WriteFloat(unit.BoundingRadius.Value);
