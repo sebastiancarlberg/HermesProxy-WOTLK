@@ -4171,7 +4171,7 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 			this.GetSession().GameState.CurrentClientNormalCast = castRequest2;
 		}
 		// Modern game-object spells can arrive before the object report that names the target.
-		if ((cast.Cast.SpellID == 6478 || isGatheringSpell) && (cast.Cast.Target.Unit == null || cast.Cast.Target.Unit.IsEmpty()))
+		if ((cast.Cast.SpellID == 3365 || cast.Cast.SpellID == 6478 || isGatheringSpell) && (cast.Cast.Target.Unit == null || cast.Cast.Target.Unit.IsEmpty()))
 		{
 			Log.Print(LogType.Debug, $"[GameObjectSpell] Deferring spell {cast.Cast.SpellID} until GAME_OBJ_REPORT_USE provides the target.", "HandleCastSpell", "WorldSocket.cs");
 			this._pendingGameObjectCast = cast;
