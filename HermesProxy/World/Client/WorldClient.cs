@@ -7909,6 +7909,7 @@ public class WorldClient
 			toast.Type = 2;
 		}
 		this.SendPacketToClient(toast);
+		this.SendPacketToClient(new GossipComplete { SuppressSound = true });
 	}
 
 	[PacketHandler(Opcode.SMSG_QUEST_GIVER_QUEST_FAILED)]
