@@ -10892,6 +10892,48 @@ public class WorldClient
 		return new WowGuid128(MathFunctions.MakePair64(parts2[0], parts2[1]), MathFunctions.MakePair64(parts2[2], parts2[3]));
 	}
 
+	private static bool IsPrimaryProfessionSkillLine(ushort skillLineId)
+	{
+		switch (skillLineId)
+		{
+		case 164: // Blacksmithing
+		case 165: // Leatherworking
+		case 171: // Alchemy
+		case 182: // Herbalism
+		case 186: // Mining
+		case 197: // Tailoring
+		case 202: // Engineering
+		case 333: // Enchanting
+		case 393: // Skinning
+		case 755: // Jewelcrafting
+		case 773: // Inscription
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static void AddPrimaryProfessionSkillLine(ActivePlayerData activePlayerData, ushort skillLineId)
+	{
+		if (!IsPrimaryProfessionSkillLine(skillLineId))
+			return;
+
+		for (int i = 0; i < activePlayerData.ProfessionSkillLine.Length; i++)
+		{
+			if (activePlayerData.ProfessionSkillLine[i] == skillLineId)
+				return;
+		}
+
+		for (int i = 0; i < activePlayerData.ProfessionSkillLine.Length; i++)
+		{
+			if (!activePlayerData.ProfessionSkillLine[i].HasValue || activePlayerData.ProfessionSkillLine[i].Value == 0)
+			{
+				activePlayerData.ProfessionSkillLine[i] = skillLineId;
+				return;
+			}
+		}
+	}
+
 	public QuestLog ReadQuestLogEntry(int i, BitArray updateMaskArray, Dictionary<int, UpdateField> updates)
 	{
 		int PLAYER_QUEST_LOG_1_1 = LegacyVersion.GetUpdateField(PlayerField.PLAYER_QUEST_LOG_1_1);
@@ -12301,8 +12343,10 @@ public class WorldClient
 					int idIndex = PLAYER_SKILL_INFO_1_1 + i29 * 3;
 					if (updateMaskArray[idIndex])
 					{
-						updateData.ActivePlayerData.Skill.SkillLineID[i29] = (ushort)(updates[idIndex].UInt32Value & 0xFFFF);
+						ushort skillLineId = (ushort)(updates[idIndex].UInt32Value & 0xFFFF);
+						updateData.ActivePlayerData.Skill.SkillLineID[i29] = skillLineId;
 						updateData.ActivePlayerData.Skill.SkillStep[i29] = (ushort)((updates[idIndex].UInt32Value >> 16) & 0xFFFF);
+						WorldClient.AddPrimaryProfessionSkillLine(updateData.ActivePlayerData, skillLineId);
 					}
 					int valueIndex = idIndex + 1;
 					if (updateMaskArray[valueIndex])
