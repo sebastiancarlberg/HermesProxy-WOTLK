@@ -9370,28 +9370,7 @@ public class WorldClient
 		byte flags = packet.ReadUInt8();
 		data.CastLevel = packet.ReadUInt8();
 		data.Applications = packet.ReadUInt8();
-		data.Flags = AuraFlagsModern.None;
-		data.ActiveFlags = 0u;
-		if ((flags & 0x10) != 0)
-		{
-			data.Flags |= AuraFlagsModern.Positive;
-		}
-		if ((flags & 0x20) != 0)
-		{
-			data.Flags |= AuraFlagsModern.Duration;
-		}
-		if ((flags & 1) != 0)
-		{
-			data.ActiveFlags |= 1u;
-		}
-		if ((flags & 2) != 0)
-		{
-			data.ActiveFlags |= 2u;
-		}
-		if ((flags & 4) != 0)
-		{
-			data.ActiveFlags |= 4u;
-		}
+		ModernVersion.ConvertAuraFlags(flags, slot, out data.Flags, out data.ActiveFlags);
 		if ((flags & 8) == 0)
 		{
 			data.CastUnit = packet.ReadPackedGuid().To128(this.GetSession().GameState);
