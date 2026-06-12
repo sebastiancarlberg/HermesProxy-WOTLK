@@ -8651,7 +8651,8 @@ public class WorldClient
 		uint flags = (dbdata.CastFlags = ((!LegacyVersion.AddedInVersion(ClientVersionBuild.V3_0_2_9056)) ? packet.ReadUInt16() : packet.ReadUInt32()));
 		if (!isSpellGo || LegacyVersion.AddedInVersion(ClientVersionBuild.V2_0_1_6180))
 		{
-			dbdata.CastTime = packet.ReadUInt32();
+			uint legacyCastTimeOrTimestamp = packet.ReadUInt32();
+			dbdata.CastTime = isSpellGo ? 0u : legacyCastTimeOrTimestamp;
 		}
 		if (isSpellGo)
 		{
