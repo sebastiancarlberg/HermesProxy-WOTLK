@@ -1162,6 +1162,9 @@ public class ObjectUpdateBuilder
 		if (u.MaxPower != null)
 			for (int i = 0; i < u.MaxPower.Length; i++)
 				if (u.MaxPower[i].HasValue) return true;
+		if (u.ModPowerRegen != null)
+			for (int i = 0; i < u.ModPowerRegen.Length; i++)
+				if (u.ModPowerRegen[i].HasValue) return true;
 		// Block 1 continued + Block 2 combat stats
 		if (u.MinDamage.HasValue || u.MaxDamage.HasValue || u.MinOffHandDamage.HasValue || u.MaxOffHandDamage.HasValue) return true;
 		if (u.StandState.HasValue || u.VisFlags.HasValue || u.AnimTier.HasValue) return true;
