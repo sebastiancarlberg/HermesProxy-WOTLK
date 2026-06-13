@@ -2224,9 +2224,11 @@ public class WorldClient
 				blob.BlobIndex = (int)packet.ReadUInt32();
 				blob.ObjectiveIndex = packet.ReadInt32();
 				blob.MapID = (int)packet.ReadUInt32();
-				blob.UiMapID = (int)packet.ReadUInt32(); // areaId in legacy
+				packet.ReadUInt32(); // legacy areaId; not a modern UiMapID
 				blob.Priority = 0;
-				blob.Flags = (int)packet.ReadUInt32(); // floorId in legacy
+				packet.ReadUInt32(); // legacy floorId; not modern POI flags
+				blob.UiMapID = 0;
+				blob.Flags = 0;
 				blob.WorldEffectID = 0;
 				blob.PlayerConditionID = 0;
 				blob.NavigationPlayerConditionID = 0;
@@ -3297,11 +3299,25 @@ public class WorldClient
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.CurrentHealth))
 		{
-			state.CurrentHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.CurrentHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.CurrentHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.MaxHealth))
 		{
-			state.MaxHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.MaxHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.MaxHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PowerType))
 		{
@@ -3341,7 +3357,14 @@ public class WorldClient
 				if ((auraMask & (ulong)(1L << (int)i)) != 0)
 				{
 					PartyMemberAuraStates aura = new PartyMemberAuraStates();
-					aura.SpellId = packet.ReadUInt16();
+					if (ModernVersion.ExpansionVersion == 3)
+					{
+						aura.SpellId = packet.ReadUInt32();
+					}
+					else
+					{
+						aura.SpellId = packet.ReadUInt16();
+					}
 					packet.ReadUInt8();
 					if (aura.SpellId != 0)
 					{
@@ -3382,7 +3405,14 @@ public class WorldClient
 			{
 				state.Pet = new PartyMemberPetStats();
 			}
-			state.Pet.Health = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.Pet.Health = packet.ReadUInt32();
+			}
+			else
+			{
+				state.Pet.Health = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PetMaxHealth))
 		{
@@ -3390,7 +3420,14 @@ public class WorldClient
 			{
 				state.Pet = new PartyMemberPetStats();
 			}
-			state.Pet.MaxHealth = packet.ReadUInt16();
+			if (ModernVersion.ExpansionVersion == 3)
+			{
+				state.Pet.MaxHealth = packet.ReadUInt32();
+			}
+			else
+			{
+				state.Pet.MaxHealth = packet.ReadUInt16();
+			}
 		}
 		if (updateFlags.HasFlag(GroupUpdateFlagTBC.PetPowerType))
 		{
@@ -3420,7 +3457,14 @@ public class WorldClient
 				if ((auraMask2 & (ulong)(1L << (int)i2)) != 0)
 				{
 					PartyMemberAuraStates aura2 = new PartyMemberAuraStates();
-					aura2.SpellId = packet.ReadUInt16();
+					if (ModernVersion.ExpansionVersion == 3)
+					{
+						aura2.SpellId = packet.ReadUInt32();
+					}
+					else
+					{
+						aura2.SpellId = packet.ReadUInt16();
+					}
 					packet.ReadUInt8();
 					if (aura2.SpellId != 0)
 					{
@@ -4180,14 +4224,16 @@ public class WorldClient
 	private void HandleGuildPermissions(WorldPacket packet)
 	{
 		GuildPermissionsQueryResults results = new GuildPermissionsQueryResults();
-		results.GuildID = packet.ReadUInt32();
 		results.RankID = packet.ReadUInt32();
-		results.Flags = packet.ReadUInt32();
-		results.WithdrawGoldLimit = packet.ReadUInt32();
-		results.RemainingWithdrawGoldLimit = packet.ReadUInt32();
-		for (int i = 0; i < 6; i++)
+		results.Flags = packet.ReadInt32();
+		results.WithdrawGoldLimit = packet.ReadInt32();
+		results.NumTabs = packet.ReadUInt8();
+		for (int i = 0; i < 6 && packet.GetCurrentStream().Length - packet.GetCurrentStream().Position >= 8; i++)
 		{
-			results.TabPermissions[i] = packet.ReadUInt32();
+			GuildPermissionsQueryResults.GuildRankTabPermissions tab = new GuildPermissionsQueryResults.GuildRankTabPermissions();
+			tab.Flags = packet.ReadInt32();
+			tab.WithdrawItemLimit = packet.ReadInt32();
+			results.Tab.Add(tab);
 		}
 		this.SendPacketToClient(results);
 	}
@@ -7863,6 +7909,7 @@ public class WorldClient
 			toast.Type = 2;
 		}
 		this.SendPacketToClient(toast);
+		this.SendPacketToClient(new GossipComplete { SuppressSound = true });
 	}
 
 	[PacketHandler(Opcode.SMSG_QUEST_GIVER_QUEST_FAILED)]
@@ -8607,7 +8654,8 @@ public class WorldClient
 		uint flags = (dbdata.CastFlags = ((!LegacyVersion.AddedInVersion(ClientVersionBuild.V3_0_2_9056)) ? packet.ReadUInt16() : packet.ReadUInt32()));
 		if (!isSpellGo || LegacyVersion.AddedInVersion(ClientVersionBuild.V2_0_1_6180))
 		{
-			dbdata.CastTime = packet.ReadUInt32();
+			uint legacyCastTimeOrTimestamp = packet.ReadUInt32();
+			dbdata.CastTime = isSpellGo ? 0u : legacyCastTimeOrTimestamp;
 		}
 		if (isSpellGo)
 		{
@@ -9306,11 +9354,15 @@ public class WorldClient
 			aura.AuraData = null;
 			update.Auras.Add(aura);
 			if (guid == this.GetSession().GameState.CurrentPlayerGuid)
-				Log.Print(LogType.Debug, $"[AuraUpdate] REMOVE slot={slot} for player", "ReadSingleAura", "");
+			{
+				this.GetSession().GameState.SelfAuraBySlot.Remove(slot);
+			}
 			return;
 		}
 		if (guid == this.GetSession().GameState.CurrentPlayerGuid)
-			Log.Print(LogType.Debug, $"[AuraUpdate] SET slot={slot} spellId={spellId} for player", "ReadSingleAura", "");
+		{
+			this.GetSession().GameState.SelfAuraBySlot[slot] = spellId;
+		}
 		AuraDataInfo data = new AuraDataInfo();
 		data.SpellID = spellId;
 		data.CastID = WowGuid128.Create(HighGuidType703.Cast, SpellCastSource.Aura, this.GetSession().GameState.CurrentMapId.Value, spellId, guid.GetCounter());
@@ -9318,28 +9370,7 @@ public class WorldClient
 		byte flags = packet.ReadUInt8();
 		data.CastLevel = packet.ReadUInt8();
 		data.Applications = packet.ReadUInt8();
-		data.Flags = AuraFlagsModern.None;
-		data.ActiveFlags = 0u;
-		if ((flags & 0x10) != 0)
-		{
-			data.Flags |= AuraFlagsModern.Positive;
-		}
-		if ((flags & 0x20) != 0)
-		{
-			data.Flags |= AuraFlagsModern.Duration;
-		}
-		if ((flags & 1) != 0)
-		{
-			data.ActiveFlags |= 1u;
-		}
-		if ((flags & 2) != 0)
-		{
-			data.ActiveFlags |= 2u;
-		}
-		if ((flags & 4) != 0)
-		{
-			data.ActiveFlags |= 4u;
-		}
+		ModernVersion.ConvertAuraFlags(flags, slot, out data.Flags, out data.ActiveFlags);
 		if ((flags & 8) == 0)
 		{
 			data.CastUnit = packet.ReadPackedGuid().To128(this.GetSession().GameState);
@@ -10840,6 +10871,48 @@ public class WorldClient
 		return new WowGuid128(MathFunctions.MakePair64(parts2[0], parts2[1]), MathFunctions.MakePair64(parts2[2], parts2[3]));
 	}
 
+	private static bool IsPrimaryProfessionSkillLine(ushort skillLineId)
+	{
+		switch (skillLineId)
+		{
+		case 164: // Blacksmithing
+		case 165: // Leatherworking
+		case 171: // Alchemy
+		case 182: // Herbalism
+		case 186: // Mining
+		case 197: // Tailoring
+		case 202: // Engineering
+		case 333: // Enchanting
+		case 393: // Skinning
+		case 755: // Jewelcrafting
+		case 773: // Inscription
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	private static void AddPrimaryProfessionSkillLine(ActivePlayerData activePlayerData, ushort skillLineId)
+	{
+		if (!IsPrimaryProfessionSkillLine(skillLineId))
+			return;
+
+		for (int i = 0; i < activePlayerData.ProfessionSkillLine.Length; i++)
+		{
+			if (activePlayerData.ProfessionSkillLine[i] == skillLineId)
+				return;
+		}
+
+		for (int i = 0; i < activePlayerData.ProfessionSkillLine.Length; i++)
+		{
+			if (!activePlayerData.ProfessionSkillLine[i].HasValue || activePlayerData.ProfessionSkillLine[i].Value == 0)
+			{
+				activePlayerData.ProfessionSkillLine[i] = skillLineId;
+				return;
+			}
+		}
+	}
+
 	public QuestLog ReadQuestLogEntry(int i, BitArray updateMaskArray, Dictionary<int, UpdateField> updates)
 	{
 		int PLAYER_QUEST_LOG_1_1 = LegacyVersion.GetUpdateField(PlayerField.PLAYER_QUEST_LOG_1_1);
@@ -12249,8 +12322,10 @@ public class WorldClient
 					int idIndex = PLAYER_SKILL_INFO_1_1 + i29 * 3;
 					if (updateMaskArray[idIndex])
 					{
-						updateData.ActivePlayerData.Skill.SkillLineID[i29] = (ushort)(updates[idIndex].UInt32Value & 0xFFFF);
+						ushort skillLineId = (ushort)(updates[idIndex].UInt32Value & 0xFFFF);
+						updateData.ActivePlayerData.Skill.SkillLineID[i29] = skillLineId;
 						updateData.ActivePlayerData.Skill.SkillStep[i29] = (ushort)((updates[idIndex].UInt32Value >> 16) & 0xFFFF);
+						WorldClient.AddPrimaryProfessionSkillLine(updateData.ActivePlayerData, skillLineId);
 					}
 					int valueIndex = idIndex + 1;
 					if (updateMaskArray[valueIndex])

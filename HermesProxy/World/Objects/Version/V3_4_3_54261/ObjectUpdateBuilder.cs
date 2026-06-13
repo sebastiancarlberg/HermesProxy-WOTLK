@@ -1148,7 +1148,7 @@ public class ObjectUpdateBuilder
 		if (u.RaceId.HasValue || u.ClassId.HasValue || u.SexId.HasValue) return true;
 		if (u.Level.HasValue || u.EffectiveLevel.HasValue || u.DisplayPower.HasValue) return true;
 		if (u.FactionTemplate.HasValue || u.Flags.HasValue || u.Flags2.HasValue || u.Flags3.HasValue) return true;
-		if (u.AuraState.HasValue || u.OverrideDisplayPowerID.HasValue) return true;
+		if (u.AuraState.HasValue || u.OverrideDisplayPowerID.HasValue || u.RangedAttackRoundBaseTime.HasValue) return true;
 		if (u.BoundingRadius.HasValue || u.CombatReach.HasValue) return true;
 		if (u.DisplayScale.HasValue || u.NativeXDisplayScale.HasValue) return true;
 		if (u.NativeDisplayID.HasValue || u.MountDisplayID.HasValue) return true;
@@ -1481,20 +1481,27 @@ public class ObjectUpdateBuilder
 			data.WriteUInt64(0uL);
 			data.WriteUInt8(0);
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		data.WriteUInt32(0u); // ArtifactPowers.size()
+		data.WriteUInt32(0u); // Gems.size()
 		if (this.IsOwner)
 		{
-			data.WriteUInt32(0u);
+			data.WriteUInt32(0u); // DynamicFlags2
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		// Per TC343 ItemData::WriteCreate the tail is:
+		//   ItemBonusKey { int32 ItemID; uint32 BonusListIDs.size(); }
+		//   [Owner] uint16 DEBUGItemLevel
+		//   Modifiers (ItemModList): WriteBits(count, 6) + FlushBits -> 1 byte when empty
+		// The previous code wrote an extra uint32 and a 4-byte int instead of the bit-packed
+		// modifier list, so the client rejected every owned-item create ("jam mirror full
+		// update failure"); bags could not link and accumulated corruption crashed the client.
+		data.WriteInt32(this.m_updateData.ObjectData?.EntryID ?? 0); // ItemBonusKey.ItemID
+		data.WriteUInt32(0u);                                        // ItemBonusKey.BonusListIDs count
 		if (this.IsOwner)
 		{
-			data.WriteUInt16(0);
+			data.WriteUInt16(0);                                     // DEBUGItemLevel
 		}
-		data.WriteInt32(0);
+		data.WriteBits(0, 6);                                        // Modifiers (empty)
+		data.FlushBits();
 	}
 
 	private void WriteEmptyItemCreate(WorldPacket data)
@@ -1535,20 +1542,21 @@ public class ObjectUpdateBuilder
 			data.WriteUInt64(0uL);
 			data.WriteUInt8(0);
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		data.WriteUInt32(0u); // ArtifactPowers.size()
+		data.WriteUInt32(0u); // Gems.size()
 		if (this.IsOwner)
 		{
-			data.WriteUInt32(0u);
+			data.WriteUInt32(0u); // DynamicFlags2
 		}
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
-		data.WriteUInt32(0u);
+		// TC343 item tail: ItemBonusKey + bit-packed empty Modifiers (see WriteCreateItemData).
+		data.WriteInt32(0);   // ItemBonusKey.ItemID
+		data.WriteUInt32(0u); // ItemBonusKey.BonusListIDs count
 		if (this.IsOwner)
 		{
-			data.WriteUInt16(0);
+			data.WriteUInt16(0); // DEBUGItemLevel
 		}
-		data.WriteInt32(0);
+		data.WriteBits(0, 6); // Modifiers (empty)
+		data.FlushBits();
 	}
 
 	private void WriteUpdateItemData(WorldPacket data)
@@ -1963,6 +1971,7 @@ public class ObjectUpdateBuilder
 			SetBit(27);
 		}
 		if (unit.DisplayPower.HasValue) SetBit(28);
+		if (unit.OverrideDisplayPowerID.HasValue) SetBit(29);
 		if (unit.Level.HasValue)
 		{
 			SetBit(30);
@@ -1988,7 +1997,7 @@ public class ObjectUpdateBuilder
 		{
 			SetBit(44);
 		}
-		if (unit.OverrideDisplayPowerID.HasValue) SetBit(45);
+		if (unit.RangedAttackRoundBaseTime.HasValue) SetBit(45);
 		if (unit.BoundingRadius.HasValue)
 		{
 			SetBit(46);
@@ -2215,7 +2224,15 @@ public class ObjectUpdateBuilder
 			}
 		}
 		if (hasAnyResBuffGroup) SetBit(212);
-		for (int bi = 0; bi < 8; bi++)
+		// Per TC343 UnitData::WriteUpdate, bits 0/32/64/96 are pure gate/header bits, so
+		// forcing them on non-empty blocks 0-3 is correct and required. But bit 0 of
+		// blocks 4-7 are REAL data fields (128=PowerRegenInterruptedFlatModifier[1],
+		// 160=ModPowerRegen[3], 192=Resistances[1], 224=ResistanceBuffModsNegative[4]).
+		// Force-setting them without writing their values misaligned the field stream of
+		// every power/regen/resistance update (any unit in combat), and the 3.4.3 client
+		// disconnected with reason 7. Verified against a packet capture: a pet power update
+		// announced bits {96,116,128,140} but only wrote Power[3]'s 4 bytes.
+		for (int bi = 0; bi < 4; bi++)
 		{
 			if (blockMasks[bi] != 0)
 			{
@@ -2305,7 +2322,13 @@ public class ObjectUpdateBuilder
 			{
 				data.WriteUInt8(unit.SexId.Value);
 			}
-			if (unit.DisplayPower.HasValue) data.WriteUInt32(unit.DisplayPower.Value);
+			// 3.4.3 UnitData.DisplayPower (bit 28) is uint8, not uint32 (see TC343
+			// UpdateFields.cpp UnitData::WriteCreate/WriteUpdate). Writing 4 bytes shifted
+			// every later field in the values stream by 3 bytes, so the client read
+			// ShapeshiftForm from the PetFlags offset (always 0) and the stance/bonus action
+			// bar never switched (it briefly flashed and rolled back).
+			if (unit.DisplayPower.HasValue) data.WriteUInt8((byte)unit.DisplayPower.Value);
+			if (unit.OverrideDisplayPowerID.HasValue) data.WriteUInt32(unit.OverrideDisplayPowerID.Value);
 			if (unit.Level.HasValue)
 			{
 				data.WriteInt32(unit.Level.Value);
@@ -2334,7 +2357,7 @@ public class ObjectUpdateBuilder
 			{
 				data.WriteUInt32(unit.AuraState.Value);
 			}
-			if (unit.OverrideDisplayPowerID.HasValue) data.WriteUInt32(unit.OverrideDisplayPowerID.Value);
+			if (unit.RangedAttackRoundBaseTime.HasValue) data.WriteUInt32(unit.RangedAttackRoundBaseTime.Value);
 			if (unit.BoundingRadius.HasValue)
 			{
 				data.WriteFloat(unit.BoundingRadius.Value);
@@ -2885,7 +2908,8 @@ public class ObjectUpdateBuilder
 		data.WriteFloat(0f);
 		for (int l = 0; l < 240; l++)
 		{
-			data.WriteUInt64(0uL);
+			ulong exploredZone = ((active.ExploredZones != null) ? active.ExploredZones[l] : null).GetValueOrDefault();
+			data.WriteUInt64(exploredZone);
 		}
 		data.WriteUInt32(0u);
 		data.WriteUInt8(1);
