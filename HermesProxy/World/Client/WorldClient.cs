@@ -9687,6 +9687,7 @@ public class WorldClient
 	{
 		WowGuid128 guid = packet.ReadGuid().To128(this.GetSession().GameState);
 		Log.Print(LogType.Debug, $"[DestroyObject] Destroying {guid} type={guid.GetHighType()}", "HandleDestroyObject", "");
+		this.ClearDestroyedSelfInventorySlot(guid);
 		this.GetSession().GameState.ObjectCacheMutex.WaitOne();
 		this.GetSession().GameState.ObjectCacheLegacy.Remove(guid);
 		this.GetSession().GameState.ObjectCacheModern.Remove(guid);
@@ -9699,6 +9700,73 @@ public class WorldClient
 		}
 		UpdateObject updateObject = new UpdateObject(this.GetSession().GameState);
 		updateObject.DestroyedGuids.Add(guid);
+		this.SendPacketToClient(updateObject);
+	}
+
+	private void ClearDestroyedSelfInventorySlot(WowGuid128 destroyedGuid)
+	{
+		if (!destroyedGuid.IsItem())
+		{
+			return;
+		}
+		WowGuid128 playerGuid = this.GetSession().GameState.CurrentPlayerGuid;
+		if (playerGuid == null || playerGuid == WowGuid128.Empty)
+		{
+			return;
+		}
+		ObjectUpdate playerUpdate = null;
+		bool changed = false;
+		this.GetSession().GameState.ObjectCacheMutex.WaitOne();
+		try
+		{
+			if (!this.GetSession().GameState.ObjectCacheLegacy.TryGetValue(playerGuid, out var updates))
+			{
+				return;
+			}
+			playerUpdate = new ObjectUpdate(playerGuid, UpdateTypeModern.Values, this.GetSession());
+			int invSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_INV_SLOT_HEAD);
+			if (invSlotHead >= 0)
+			{
+				for (int i = 0; i < 23; i++)
+				{
+					int field = invSlotHead + i * 2;
+					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					{
+						updates[field] = new UpdateField(0u);
+						updates[field + 1] = new UpdateField(0u);
+						playerUpdate.ActivePlayerData.InvSlots[i] = WowGuid128.Empty;
+						changed = true;
+						Log.Print(LogType.Debug, $"[SoldItemSlotClear] InvSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+					}
+				}
+			}
+			int packSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_PACK_SLOT_1);
+			if (packSlotHead >= 0)
+			{
+				for (int i = 0; i < 16; i++)
+				{
+					int field = packSlotHead + i * 2;
+					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					{
+						updates[field] = new UpdateField(0u);
+						updates[field + 1] = new UpdateField(0u);
+						playerUpdate.ActivePlayerData.PackSlots[i] = WowGuid128.Empty;
+						changed = true;
+						Log.Print(LogType.Debug, $"[SoldItemSlotClear] PackSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+					}
+				}
+			}
+		}
+		finally
+		{
+			this.GetSession().GameState.ObjectCacheMutex.ReleaseMutex();
+		}
+		if (!changed)
+		{
+			return;
+		}
+		UpdateObject updateObject = new UpdateObject(this.GetSession().GameState);
+		updateObject.ObjectUpdates.Add(playerUpdate);
 		this.SendPacketToClient(updateObject);
 	}
 

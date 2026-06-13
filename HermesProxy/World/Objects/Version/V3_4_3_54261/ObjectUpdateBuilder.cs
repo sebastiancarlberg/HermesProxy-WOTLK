@@ -484,6 +484,44 @@ public class ObjectUpdateBuilder
 		return false;
 	}
 
+	private bool HasAnyItemFieldSet()
+	{
+		ItemData item = this.m_updateData.ItemData;
+		if (item == null)
+			return false;
+
+		if (item.Owner != null || item.ContainedIn != null || item.Creator != null || item.GiftCreator != null)
+			return true;
+		if (item.StackCount.HasValue || item.Duration.HasValue || item.Flags.HasValue)
+			return true;
+		if (item.PropertySeed.HasValue || item.RandomProperty.HasValue)
+			return true;
+		if (item.Durability.HasValue || item.MaxDurability.HasValue)
+			return true;
+		if (item.CreatePlayedTime.HasValue || item.Context.HasValue || item.ArtifactXP.HasValue || item.ItemAppearanceModID.HasValue)
+			return true;
+		for (int i = 0; i < 5; i++)
+			if (item.SpellCharges[i].HasValue)
+				return true;
+		for (int i = 0; i < 13; i++)
+			if (item.Enchantment[i] != null)
+				return true;
+		return false;
+	}
+
+	private bool HasAnyContainerFieldSet()
+	{
+		ContainerData container = this.m_updateData.ContainerData;
+		if (container == null)
+			return false;
+		if (container.NumSlots.HasValue)
+			return true;
+		for (int i = 0; i < container.Slots.Length; i++)
+			if (container.Slots[i] != null)
+				return true;
+		return false;
+	}
+
 	/// <summary>
 	/// Writes ActivePlayerData update using TC343 bitmask format.
 	/// HasChangesMask&lt;1525&gt; = 48 blocks of 32 bits (1536 total).
@@ -1322,7 +1360,8 @@ public class ObjectUpdateBuilder
 		uint changedMask = 0u;
 		bool hasObjectChanges = this.m_objectTypeMask.HasAnyFlag(ObjectTypeMask.Object) && this.m_updateData.ObjectData != null && (this.m_updateData.ObjectData.EntryID.HasValue || this.m_updateData.ObjectData.DynamicFlags.HasValue || this.m_updateData.ObjectData.Scale.HasValue);
 		bool hasUnitChanges = this.m_objectTypeMask.HasAnyFlag(ObjectTypeMask.Unit) && this.m_updateData.UnitData != null && this.HasAnyUnitFieldSet();
-		bool hasItemChanges = this.m_objectTypeMask.HasAnyFlag(ObjectTypeMask.Item) && this.m_updateData.ItemData != null;
+		bool hasItemChanges = this.m_objectTypeMask.HasAnyFlag(ObjectTypeMask.Item) && this.HasAnyItemFieldSet();
+		bool hasContainerChanges = this.m_objectTypeMask.HasAnyFlag(ObjectTypeMask.Container) && this.HasAnyContainerFieldSet();
 
 		bool hasActivePlayerChanges = this.HasActivePlayerChanges();
 
@@ -1333,6 +1372,10 @@ public class ObjectUpdateBuilder
 		if (hasItemChanges)
 		{
 			changedMask |= 2;
+		}
+		if (hasContainerChanges)
+		{
+			changedMask |= 4;
 		}
 		if (hasUnitChanges)
 		{
@@ -1364,6 +1407,10 @@ public class ObjectUpdateBuilder
 		if (hasItemChanges)
 		{
 			this.WriteUpdateItemData(data);
+		}
+		if (hasContainerChanges)
+		{
+			this.WriteUpdateContainerData(data);
 		}
 		if (hasUnitChanges)
 		{
@@ -1665,6 +1712,55 @@ public class ObjectUpdateBuilder
 					if (item.Enchantment[i].ID.HasValue) data.WriteInt32(item.Enchantment[i].ID.Value);
 					if (item.Enchantment[i].Duration.HasValue) data.WriteUInt32(item.Enchantment[i].Duration.Value);
 					if (item.Enchantment[i].Charges.HasValue) data.WriteUInt16(item.Enchantment[i].Charges.Value);
+				}
+			}
+		}
+	}
+
+	private void WriteUpdateContainerData(WorldPacket data)
+	{
+		ContainerData container = this.m_updateData.ContainerData;
+		uint[] blocks = new uint[2];
+		void SetBit(int bit) { blocks[bit / 32] |= (1u << (bit % 32)); }
+
+		if (container?.NumSlots.HasValue == true)
+		{
+			SetBit(0);
+			SetBit(1);
+		}
+		if (container?.Slots != null)
+		{
+			for (int i = 0; i < 36; i++)
+			{
+				if (container.Slots[i] != null)
+				{
+					SetBit(2);
+					SetBit(3 + i);
+				}
+			}
+		}
+
+		byte blocksMask = 0;
+		if (blocks[0] != 0) blocksMask |= 1;
+		if (blocks[1] != 0) blocksMask |= 2;
+
+		data.WriteBits(blocksMask, 2);
+		for (int b = 0; b < 2; b++)
+			if ((blocksMask & (1 << b)) != 0)
+				data.WriteBits(blocks[b], 32);
+		data.FlushBits();
+
+		if ((blocks[0] & 1) != 0 && container.NumSlots.HasValue)
+		{
+			data.WriteUInt32(container.NumSlots.Value);
+		}
+		if ((blocks[0] & (1u << 2)) != 0)
+		{
+			for (int i = 0; i < 36; i++)
+			{
+				if ((blocks[(3 + i) / 32] & (1u << ((3 + i) % 32))) != 0)
+				{
+					data.WritePackedGuid128(container.Slots[i] ?? WowGuid128.Empty);
 				}
 			}
 		}
