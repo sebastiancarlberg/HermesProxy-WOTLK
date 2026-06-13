@@ -6310,6 +6310,7 @@ public class WorldClient
 		case SplineTypeLegacy.Stop:
 		{
 			moveSpline.SplineType = SplineTypeModern.None;
+			this.GetSession().GameState.LastServerSideMovement[guid] = moveSpline;
 			MonsterMove moveStop = new MonsterMove(guid, moveSpline);
 			this.SendPacketToClient(moveStop);
 			return;
@@ -6436,6 +6437,7 @@ public class WorldClient
 			}
 		}
 		MonsterMove monsterMove = new MonsterMove(guid, moveSpline);
+		this.GetSession().GameState.LastServerSideMovement[guid] = moveSpline;
 		this.SendPacketToClient(monsterMove);
 		if (isTaxiFlight)
 		{
@@ -9681,6 +9683,7 @@ public class WorldClient
 	{
 		WowGuid128 guid = packet.ReadGuid().To128(this.GetSession().GameState);
 		Log.Print(LogType.Debug, $"[DestroyObject] Destroying {guid} type={guid.GetHighType()}", "HandleDestroyObject", "");
+		this.ClearDestroyedSelfInventorySlot(guid);
 		this.GetSession().GameState.ObjectCacheMutex.WaitOne();
 		this.GetSession().GameState.ObjectCacheLegacy.Remove(guid);
 		this.GetSession().GameState.ObjectCacheModern.Remove(guid);
@@ -9693,6 +9696,73 @@ public class WorldClient
 		}
 		UpdateObject updateObject = new UpdateObject(this.GetSession().GameState);
 		updateObject.DestroyedGuids.Add(guid);
+		this.SendPacketToClient(updateObject);
+	}
+
+	private void ClearDestroyedSelfInventorySlot(WowGuid128 destroyedGuid)
+	{
+		if (!destroyedGuid.IsItem())
+		{
+			return;
+		}
+		WowGuid128 playerGuid = this.GetSession().GameState.CurrentPlayerGuid;
+		if (playerGuid == null || playerGuid == WowGuid128.Empty)
+		{
+			return;
+		}
+		ObjectUpdate playerUpdate = null;
+		bool changed = false;
+		this.GetSession().GameState.ObjectCacheMutex.WaitOne();
+		try
+		{
+			if (!this.GetSession().GameState.ObjectCacheLegacy.TryGetValue(playerGuid, out var updates))
+			{
+				return;
+			}
+			playerUpdate = new ObjectUpdate(playerGuid, UpdateTypeModern.Values, this.GetSession());
+			int invSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_INV_SLOT_HEAD);
+			if (invSlotHead >= 0)
+			{
+				for (int i = 0; i < 23; i++)
+				{
+					int field = invSlotHead + i * 2;
+					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					{
+						updates[field] = new UpdateField(0u);
+						updates[field + 1] = new UpdateField(0u);
+						playerUpdate.ActivePlayerData.InvSlots[i] = WowGuid128.Empty;
+						changed = true;
+						Log.Print(LogType.Debug, $"[SoldItemSlotClear] InvSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+					}
+				}
+			}
+			int packSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_PACK_SLOT_1);
+			if (packSlotHead >= 0)
+			{
+				for (int i = 0; i < 16; i++)
+				{
+					int field = packSlotHead + i * 2;
+					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					{
+						updates[field] = new UpdateField(0u);
+						updates[field + 1] = new UpdateField(0u);
+						playerUpdate.ActivePlayerData.PackSlots[i] = WowGuid128.Empty;
+						changed = true;
+						Log.Print(LogType.Debug, $"[SoldItemSlotClear] PackSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+					}
+				}
+			}
+		}
+		finally
+		{
+			this.GetSession().GameState.ObjectCacheMutex.ReleaseMutex();
+		}
+		if (!changed)
+		{
+			return;
+		}
+		UpdateObject updateObject = new UpdateObject(this.GetSession().GameState);
+		updateObject.ObjectUpdates.Add(playerUpdate);
 		this.SendPacketToClient(updateObject);
 	}
 
@@ -9816,6 +9886,9 @@ public class WorldClient
 				if (updateData2.UnitData != null && updateData2.UnitData.MaxPower != null)
 					for (int p = 0; p < updateData2.UnitData.MaxPower.Length; p++)
 						if (updateData2.UnitData.MaxPower[p].HasValue) { hasAnythingToSend = true; break; }
+				if (updateData2.UnitData != null && updateData2.UnitData.ModPowerRegen != null)
+					for (int p = 0; p < updateData2.UnitData.ModPowerRegen.Length; p++)
+						if (updateData2.UnitData.ModPowerRegen[p].HasValue) { hasAnythingToSend = true; break; }
 				// Check stat/resistance/combat fields
 				if (updateData2.UnitData != null)
 				{
@@ -9867,6 +9940,14 @@ public class WorldClient
 					if (pd.VisibleItems != null)
 						for (int v = 0; v < pd.VisibleItems.Length; v++)
 							if (pd.VisibleItems[v] != null) { hasAnythingToSend = true; break; }
+				}
+				// Diagnostic stabilizer: recent Westfall crashes match the old non-self player
+				// Values-update failure mode. Creates, movement, auras, power, and combat packets
+				// still flow; this only suppresses field-delta Values packets for other players.
+				if (hasAnythingToSend && guid3.IsPlayer() && guid3 != this.GetSession().GameState.CurrentPlayerGuid)
+				{
+					Log.Print(LogType.Debug, $"[NonSelfPlayerValues] Skipped Values update for {guid3}", "HandleUpdateObject", "");
+					hasAnythingToSend = false;
 				}
 				if (hasAnythingToSend)
 				{
@@ -11507,17 +11588,30 @@ public class WorldClient
 				}
 			}
 			int UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER = LegacyVersion.GetUpdateField(UnitField.UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER);
-		if (UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER >= 0)
-		{
-			for (int iPR = 0; iPR < 7; iPR++)
+			if (UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER >= 0)
 			{
-				if (updateMaskArray[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR])
+				for (int iPR = 0; iPR < 7; iPR++)
 				{
-					updateData.UnitData.ModPowerRegen[iPR] = updates[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR].FloatValue;
+					if (updateMaskArray[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR])
+					{
+						sbyte powerRegenSlot;
+						if (this.GetSession().GameState.HunterPetGuids.Contains(guid))
+						{
+							powerRegenSlot = ClassPowerTypes.GetPowerSlotForPet((PowerType)iPR);
+						}
+						else
+						{
+							Class classId3 = ((!updateData.UnitData.ClassId.HasValue) ? this.GetSession().GameState.GetUnitClass(guid.To128(this.GetSession().GameState)) : ((Class)updateData.UnitData.ClassId.Value));
+							powerRegenSlot = ClassPowerTypes.GetPowerSlotForClass(classId3, (PowerType)iPR);
+						}
+						if (powerRegenSlot >= 0)
+						{
+							updateData.UnitData.ModPowerRegen[powerRegenSlot] = updates[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR].FloatValue;
+						}
+					}
 				}
 			}
-		}
-		int UNIT_VIRTUAL_ITEM_SLOT_DISPLAY = LegacyVersion.GetUpdateField(UnitField.UNIT_VIRTUAL_ITEM_SLOT_DISPLAY);
+			int UNIT_VIRTUAL_ITEM_SLOT_DISPLAY = LegacyVersion.GetUpdateField(UnitField.UNIT_VIRTUAL_ITEM_SLOT_DISPLAY);
 			if (UNIT_VIRTUAL_ITEM_SLOT_DISPLAY >= 0)
 			{
 				for (int i6 = 0; i6 < 3; i6++)

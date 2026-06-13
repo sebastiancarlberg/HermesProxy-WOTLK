@@ -162,6 +162,8 @@ public class GameSessionData
 
 	public Dictionary<WowGuid128, ObjectType> OriginalObjectTypes = new Dictionary<WowGuid128, ObjectType>();
 
+	public Dictionary<WowGuid128, ServerSideMovement> LastServerSideMovement = new Dictionary<WowGuid128, ServerSideMovement>();
+
 	public Dictionary<WowGuid128, uint[]> ItemGems = new Dictionary<WowGuid128, uint[]>();
 
 	public Dictionary<uint, Class> CreatureClasses = new Dictionary<uint, Class>();
