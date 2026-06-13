@@ -27,11 +27,11 @@ If work has already happened as mixed local changes, first preserve it on a clea
 
 ## Current Hermes Testing Pattern
 
-- The fork repo is `C:\Users\carlb\Documents\WoW\HermesProxy-WOTLK-fork`.
-- Build with:
-  `& 'C:\Users\carlb\Documents\WoW\TBC\.dotnet-sdk\dotnet.exe' publish 'C:\Users\carlb\Documents\WoW\HermesProxy-WOTLK-fork\HermesProxy\HermesProxy.csproj' -c Release -r win-x64 --self-contained true -o 'C:\Users\carlb\Documents\WoW\HermesProxy-WOTLK-fork\build'`
-- The user tests with:
-  `C:\Users\carlb\Documents\WoW\HermesProxy-WOTLK-fork\launchers\Start Hermes Fork + Client.cmd`
+- The repo root is the current checkout directory.
+- Build from the repo root with:
+  `dotnet publish HermesProxy/HermesProxy.csproj -c Release -r win-x64 --self-contained true -o build`
+- If the user has a local pinned .NET SDK or wrapper script, use it only for local execution and do not commit that machine-specific path.
+- For local game testing, look for repo-local or sibling `launchers/` scripts. Treat launchers as local helpers unless they are already tracked and portable.
 - Treat runtime test reports from the user as the source of truth for whether a fix is verified.
 
 ## Fresh Session Checklist
@@ -47,6 +47,13 @@ At the start of a new Codex session in this repo:
 ## Project Notes
 
 - `VERIFIED_FIXES.md`, `CORE-ISSUE-PLAN.md`, and similar status files may contain useful history, but code and current test results are authoritative.
-- `Hermes-Experiment` can contain older experimental work. Port only deliberate, verified changes into this fork.
-- The Wrathion source at `C:\Users\carlb\Documents\WoW\Wrathion-3.4.3_Source` is a useful 3.4.3 reference when Hermes packet serialization is uncertain.
+- A local `Hermes-Experiment` checkout may contain older experimental work. Port only deliberate, verified changes into this fork.
+- A local Wrathion 3.4.3 source checkout is a useful reference when Hermes packet serialization is uncertain. If present, it is often a sibling directory of this checkout; otherwise ask the user where it is. Do not commit absolute paths to it.
 - Broad gates such as skipping all non-self player or pet Values updates are diagnostic stabilizers unless they have been converted into a narrow serialization fix and verified.
+
+## Debugging References
+
+- Prefer field-by-field comparison against a known-good 3.4.3 implementation when modern update-field serialization is suspect.
+- Useful reference areas in Wrathion/Trinity-style sources include `Entities/Object/Updates/UpdateFields.*`, object update builders, and packet structures for the affected object type.
+- Use Hermes logs, client crash dumps, packet captures/sniffs, and deterministic reproduction reports together. A crash that always faults at the same client instruction usually points to packet layout or field-width/alignment, not game content by itself.
+- When a broad diagnostic gate stabilizes the client, keep it on a diagnostic branch and use it to isolate the exact packet/field. Final fixes should repair the specific serialization or translation path.
