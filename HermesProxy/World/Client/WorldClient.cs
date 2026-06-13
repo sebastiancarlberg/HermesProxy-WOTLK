@@ -9868,6 +9868,14 @@ public class WorldClient
 						for (int v = 0; v < pd.VisibleItems.Length; v++)
 							if (pd.VisibleItems[v] != null) { hasAnythingToSend = true; break; }
 				}
+				// Diagnostic stabilizer: recent Westfall crashes match the old non-self player
+				// Values-update failure mode. Creates, movement, auras, power, and combat packets
+				// still flow; this only suppresses field-delta Values packets for other players.
+				if (hasAnythingToSend && guid3.IsPlayer() && guid3 != this.GetSession().GameState.CurrentPlayerGuid)
+				{
+					Log.Print(LogType.Debug, $"[NonSelfPlayerValues] Skipped Values update for {guid3}", "HandleUpdateObject", "");
+					hasAnythingToSend = false;
+				}
 				if (hasAnythingToSend)
 				{
 					// Debug: log stat/resistance updates for the player
