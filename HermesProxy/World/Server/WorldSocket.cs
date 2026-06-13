@@ -3248,9 +3248,34 @@ public class WorldSocket : SocketBase, BnetServices.INetwork
 	[PacketHandler(Opcode.CMSG_AREA_SPIRIT_HEALER_QUEUE)]
 	private void HandleInteractWithNPC(InteractWithNPC interact)
 	{
+		this.StopInteractedNpcMovement(interact.CreatureGUID);
 		WorldPacket packet = new WorldPacket(interact.GetUniversalOpcode());
 		packet.WriteGuid(interact.CreatureGUID.To64());
 		this.SendPacketToServer(packet);
+	}
+
+	private void StopInteractedNpcMovement(WowGuid128 guid)
+	{
+		if (guid == null || !guid.IsCreature())
+		{
+			return;
+		}
+		if (!this.GetSession().GameState.LastServerSideMovement.TryGetValue(guid, out var lastMovement))
+		{
+			return;
+		}
+		Framework.GameMath.Vector3 stopPosition = lastMovement.EndPosition != Framework.GameMath.Vector3.Zero ? lastMovement.EndPosition : lastMovement.StartPosition;
+		ServerSideMovement stopSpline = new ServerSideMovement
+		{
+			SplineType = SplineTypeModern.None,
+			SplineId = lastMovement.SplineId + 1,
+			StartPosition = stopPosition,
+			SplineFlags = SplineFlagModern.None,
+			SplineTimeFull = 0
+		};
+		this.GetSession().GameState.LastServerSideMovement[guid] = stopSpline;
+		Log.Print(LogType.Debug, $"[NpcInteractStop] Sent local stop for {guid} at {stopPosition}", "HandleInteractWithNPC", "");
+		this.SendPacket(new MonsterMove(guid, stopSpline));
 	}
 
 	[PacketHandler(Opcode.CMSG_GOSSIP_SELECT_OPTION)]

@@ -6310,6 +6310,7 @@ public class WorldClient
 		case SplineTypeLegacy.Stop:
 		{
 			moveSpline.SplineType = SplineTypeModern.None;
+			this.GetSession().GameState.LastServerSideMovement[guid] = moveSpline;
 			MonsterMove moveStop = new MonsterMove(guid, moveSpline);
 			this.SendPacketToClient(moveStop);
 			return;
@@ -6436,6 +6437,7 @@ public class WorldClient
 			}
 		}
 		MonsterMove monsterMove = new MonsterMove(guid, moveSpline);
+		this.GetSession().GameState.LastServerSideMovement[guid] = moveSpline;
 		this.SendPacketToClient(monsterMove);
 		if (isTaxiFlight)
 		{
