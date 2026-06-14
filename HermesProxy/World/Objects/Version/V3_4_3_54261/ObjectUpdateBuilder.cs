@@ -49,6 +49,10 @@ public class ObjectUpdateBuilder
 		this.m_updateData = updateData;
 		this.m_gameState = gameState;
 		ObjectType objectType = updateData.Guid.GetObjectType();
+		if (updateData.Type == UpdateTypeModern.Values)
+		{
+			objectType = this.m_gameState.GetOriginalObjectType(updateData.Guid);
+		}
 		if (updateData.CreateData != null)
 		{
 			objectType = updateData.CreateData.ObjectType;

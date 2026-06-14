@@ -9715,44 +9715,77 @@ public class WorldClient
 			return;
 		}
 		ObjectUpdate playerUpdate = null;
-		bool changed = false;
+		bool playerChanged = false;
+		List<ObjectUpdate> containerUpdates = new List<ObjectUpdate>();
 		this.GetSession().GameState.ObjectCacheMutex.WaitOne();
 		try
 		{
-			if (!this.GetSession().GameState.ObjectCacheLegacy.TryGetValue(playerGuid, out var updates))
+			if (this.GetSession().GameState.ObjectCacheLegacy.TryGetValue(playerGuid, out var updates))
 			{
-				return;
-			}
-			playerUpdate = new ObjectUpdate(playerGuid, UpdateTypeModern.Values, this.GetSession());
-			int invSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_INV_SLOT_HEAD);
-			if (invSlotHead >= 0)
-			{
-				for (int i = 0; i < 23; i++)
+				playerUpdate = new ObjectUpdate(playerGuid, UpdateTypeModern.Values, this.GetSession());
+				int invSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_INV_SLOT_HEAD);
+				if (invSlotHead >= 0)
 				{
-					int field = invSlotHead + i * 2;
-					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					for (int i = 0; i < 23; i++)
 					{
-						updates[field] = new UpdateField(0u);
-						updates[field + 1] = new UpdateField(0u);
-						playerUpdate.ActivePlayerData.InvSlots[i] = WowGuid128.Empty;
-						changed = true;
-						Log.Print(LogType.Debug, $"[SoldItemSlotClear] InvSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+						int field = invSlotHead + i * 2;
+						if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+						{
+							updates[field] = new UpdateField(0u);
+							updates[field + 1] = new UpdateField(0u);
+							playerUpdate.ActivePlayerData.InvSlots[i] = WowGuid128.Empty;
+							playerChanged = true;
+							Log.Print(LogType.Debug, $"[SoldItemSlotClear] InvSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+						}
+					}
+				}
+				int packSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_PACK_SLOT_1);
+				if (packSlotHead >= 0)
+				{
+					for (int i = 0; i < 16; i++)
+					{
+						int field = packSlotHead + i * 2;
+						if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+						{
+							updates[field] = new UpdateField(0u);
+							updates[field + 1] = new UpdateField(0u);
+							playerUpdate.ActivePlayerData.PackSlots[i] = WowGuid128.Empty;
+							playerChanged = true;
+							Log.Print(LogType.Debug, $"[SoldItemSlotClear] PackSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+						}
 					}
 				}
 			}
-			int packSlotHead = LegacyVersion.GetUpdateField(PlayerField.PLAYER_FIELD_PACK_SLOT_1);
-			if (packSlotHead >= 0)
+			int containerSlotHead = LegacyVersion.GetUpdateField(ContainerField.CONTAINER_FIELD_SLOT_1);
+			if (containerSlotHead >= 0)
 			{
-				for (int i = 0; i < 16; i++)
+				foreach (KeyValuePair<WowGuid128, Dictionary<int, UpdateField>> cachedObject in this.GetSession().GameState.ObjectCacheLegacy.ToList())
 				{
-					int field = packSlotHead + i * 2;
-					if (WorldClient.GetGuidValue(updates, field).To128(this.GetSession().GameState) == destroyedGuid)
+					WowGuid128 containerGuid = cachedObject.Key;
+					if (this.GetSession().GameState.GetOriginalObjectType(containerGuid) != ObjectType.Container)
 					{
-						updates[field] = new UpdateField(0u);
-						updates[field + 1] = new UpdateField(0u);
-						playerUpdate.ActivePlayerData.PackSlots[i] = WowGuid128.Empty;
-						changed = true;
-						Log.Print(LogType.Debug, $"[SoldItemSlotClear] PackSlots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+						continue;
+					}
+					Dictionary<int, UpdateField> containerFields = cachedObject.Value;
+					ObjectUpdate containerUpdate = null;
+					for (int i = 0; i < 36; i++)
+					{
+						int field = containerSlotHead + i * 2;
+						if (WorldClient.GetGuidValue(containerFields, field).To128(this.GetSession().GameState) == destroyedGuid)
+						{
+							containerFields[field] = new UpdateField(0u);
+							containerFields[field + 1] = new UpdateField(0u);
+							if (containerUpdate == null)
+							{
+								containerUpdate = new ObjectUpdate(containerGuid, UpdateTypeModern.Values, this.GetSession());
+							}
+							containerUpdate.ContainerData.Slots[i] = WowGuid128.Empty;
+							Log.Print(LogType.Debug, $"[SoldItemSlotClear] Container {containerGuid} Slots[{i}] cleared for destroyed {destroyedGuid}", "HandleDestroyObject", "");
+						}
+					}
+					if (containerUpdate != null)
+					{
+						containerUpdates.Add(containerUpdate);
 					}
 				}
 			}
@@ -9761,12 +9794,16 @@ public class WorldClient
 		{
 			this.GetSession().GameState.ObjectCacheMutex.ReleaseMutex();
 		}
-		if (!changed)
+		if (!playerChanged && containerUpdates.Count == 0)
 		{
 			return;
 		}
 		UpdateObject updateObject = new UpdateObject(this.GetSession().GameState);
-		updateObject.ObjectUpdates.Add(playerUpdate);
+		if (playerChanged)
+		{
+			updateObject.ObjectUpdates.Add(playerUpdate);
+		}
+		updateObject.ObjectUpdates.AddRange(containerUpdates);
 		this.SendPacketToClient(updateObject);
 	}
 
@@ -9918,9 +9955,32 @@ public class WorldClient
 						for (int r = 0; r < 7; r++)
 							if (u.ResistanceBuffModsNegative[r].HasValue) { hasAnythingToSend = true; break; }
 				}
-				// Skip Item-only Values updates - sends corrupt data that breaks client state
-				if (guid3.IsItem())
+				// Skip plain Item-only Values updates - sends corrupt data that breaks client state.
+				// Bag slot changes also use item GUIDs, but carry ContainerData and must be forwarded.
+				bool hasContainerChanges = false;
+				if (updateData2.ContainerData?.NumSlots.HasValue == true)
+				{
+					hasContainerChanges = true;
+				}
+				if (!hasContainerChanges && updateData2.ContainerData?.Slots != null)
+				{
+					for (int s = 0; s < updateData2.ContainerData.Slots.Length; s++)
+					{
+						if (updateData2.ContainerData.Slots[s] != null)
+						{
+							hasContainerChanges = true;
+							break;
+						}
+					}
+				}
+				if (guid3.IsItem() && !hasContainerChanges)
+				{
 					hasAnythingToSend = false;
+				}
+				else if (hasContainerChanges)
+				{
+					hasAnythingToSend = true;
+				}
 				if (updateData2.ActivePlayerData != null)
 				{
 					ActivePlayerData a = updateData2.ActivePlayerData;
@@ -11434,9 +11494,10 @@ public class WorldClient
 			{
 				for (int i3 = 0; i3 < 36; i3++)
 				{
-					if (updateMaskArray[CONTAINER_FIELD_SLOT_1 + i3 * 2])
+					int slotField = CONTAINER_FIELD_SLOT_1 + i3 * 2;
+					if (updateMaskArray[slotField] || updateMaskArray[slotField + 1])
 					{
-						updateData.ContainerData.Slots[i3] = WorldClient.GetGuidValue(updates, CONTAINER_FIELD_SLOT_1 + i3 * 2).To128(this.GetSession().GameState);
+						updateData.ContainerData.Slots[i3] = WorldClient.GetGuidValue(updates, slotField).To128(this.GetSession().GameState);
 					}
 				}
 			}
