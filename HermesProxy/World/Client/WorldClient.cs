@@ -2137,6 +2137,12 @@ public class WorldClient
 		this.SendPacketToClient(mount);
 	}
 
+	[PacketHandler(Opcode.SMSG_DISMOUNT)]
+	private void HandleDismount(WorldPacket packet)
+	{
+		this.SendPacketToClient(new Dismount());
+	}
+
 	[PacketHandler(Opcode.SMSG_ACHIEVEMENT_DELETED)]
 	private void HandleAchievementDeleted(WorldPacket packet)
 	{
