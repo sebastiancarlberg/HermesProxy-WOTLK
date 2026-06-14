@@ -9816,6 +9816,9 @@ public class WorldClient
 				if (updateData2.UnitData != null && updateData2.UnitData.MaxPower != null)
 					for (int p = 0; p < updateData2.UnitData.MaxPower.Length; p++)
 						if (updateData2.UnitData.MaxPower[p].HasValue) { hasAnythingToSend = true; break; }
+				if (updateData2.UnitData != null && updateData2.UnitData.ModPowerRegen != null)
+					for (int p = 0; p < updateData2.UnitData.ModPowerRegen.Length; p++)
+						if (updateData2.UnitData.ModPowerRegen[p].HasValue) { hasAnythingToSend = true; break; }
 				// Check stat/resistance/combat fields
 				if (updateData2.UnitData != null)
 				{
@@ -11507,17 +11510,30 @@ public class WorldClient
 				}
 			}
 			int UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER = LegacyVersion.GetUpdateField(UnitField.UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER);
-		if (UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER >= 0)
-		{
-			for (int iPR = 0; iPR < 7; iPR++)
+			if (UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER >= 0)
 			{
-				if (updateMaskArray[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR])
+				for (int iPR = 0; iPR < 7; iPR++)
 				{
-					updateData.UnitData.ModPowerRegen[iPR] = updates[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR].FloatValue;
+					if (updateMaskArray[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR])
+					{
+						sbyte powerRegenSlot;
+						if (this.GetSession().GameState.HunterPetGuids.Contains(guid))
+						{
+							powerRegenSlot = ClassPowerTypes.GetPowerSlotForPet((PowerType)iPR);
+						}
+						else
+						{
+							Class classId3 = ((!updateData.UnitData.ClassId.HasValue) ? this.GetSession().GameState.GetUnitClass(guid.To128(this.GetSession().GameState)) : ((Class)updateData.UnitData.ClassId.Value));
+							powerRegenSlot = ClassPowerTypes.GetPowerSlotForClass(classId3, (PowerType)iPR);
+						}
+						if (powerRegenSlot >= 0)
+						{
+							updateData.UnitData.ModPowerRegen[powerRegenSlot] = updates[UNIT_FIELD_POWER_REGEN_FLAT_MODIFIER + iPR].FloatValue;
+						}
+					}
 				}
 			}
-		}
-		int UNIT_VIRTUAL_ITEM_SLOT_DISPLAY = LegacyVersion.GetUpdateField(UnitField.UNIT_VIRTUAL_ITEM_SLOT_DISPLAY);
+			int UNIT_VIRTUAL_ITEM_SLOT_DISPLAY = LegacyVersion.GetUpdateField(UnitField.UNIT_VIRTUAL_ITEM_SLOT_DISPLAY);
 			if (UNIT_VIRTUAL_ITEM_SLOT_DISPLAY >= 0)
 			{
 				for (int i6 = 0; i6 < 3; i6++)
