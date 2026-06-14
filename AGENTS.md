@@ -13,10 +13,11 @@ This repository uses a branch workflow for Hermes fixes. Follow it unless the us
 
 1. Create a focused branch from `develop`, using a name like `fix/<short-name>` or `feature/<short-name>`.
 2. Keep each branch scoped to one issue or feature.
-3. Build and let the user test the branch.
-4. Commit only the code that was actually verified by testing.
-5. Merge verified branches into `develop`.
-6. Merge `develop` into `master` only when the user says the combined set is stable enough for release.
+3. Before building or testing an existing branch, check whether `develop` has moved. Rebase the branch onto current `develop` unless there is a specific reason not to.
+4. Build and let the user test the branch.
+5. Commit only the code that was actually verified by testing.
+6. Merge verified branches into `develop`.
+7. Merge `develop` into `master` only when the user says the combined set is stable enough for release.
 
 If work has already happened as mixed local changes, first preserve it on a clearly named `test/...` or `wip/...` branch from `develop`. Then split verified pieces into focused `fix/...` or `feature/...` branches before merging to `develop`.
 
@@ -41,8 +42,9 @@ At the start of a new Codex session in this repo:
 1. Run `git status --short --branch` and `git branch --list -vv`.
 2. Read this file before making branch or commit decisions.
 3. Check recent commits with `git log --oneline --decorate --graph --max-count=20 --all`.
-4. Ask whether the user wants testing work, branch cleanup, or final verified commits if the current branch has mixed WIP changes.
-5. Prefer local repo evidence and logs over memory from previous chats.
+4. Run `git fetch --prune --all` when network access is available, then check whether the current branch is behind its upstream or behind `develop`.
+5. Ask whether the user wants testing work, branch cleanup, or final verified commits if the current branch has mixed WIP changes.
+6. Prefer local repo evidence and logs over memory from previous chats.
 
 ## Project Notes
 
